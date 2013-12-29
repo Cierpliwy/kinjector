@@ -28,6 +28,9 @@
     if ((byte) >= offsetof(struct pt_regs, reg) && \
         (byte) < offsetof(struct pt_regs, reg) + reg_size) reg_name = name
 
+/* Runtime debug flag */
+static int ki_debug = 0;
+
 /* --- FUNCTIONS ---------------------------------------------------------- */
 /*
  * Invert specific bit under an address
@@ -46,11 +49,14 @@ static void ki_bitflip(unsigned long addr, unsigned char bit)
                 rw = false;
         }
         
-        printk(MODULE_PRINTK_ERR "\tBITFLIP 0x%lx:%d\n", addr, bit);
+        printk(MODULE_PRINTK_ERR "\tBITFLIP 0x%lx:%d (%pF)\n", addr, bit, 
+               (void*)addr);
 
-        byte = *(char*)(addr);
-        byte ^= 1 << bit;
-        *(char*)(addr) = byte;
+        if (!ki_debug) {
+            byte = *(char*)(addr);
+            byte ^= 1 << bit;
+            *(char*)(addr) = byte;
+        }
 
         if (!rw) pte->pte &= ~_PAGE_RW;
 }
@@ -122,6 +128,8 @@ static void ki_bitflip_regs(struct pt_regs *regs)
 static void ki_do_injection(struct ki_injection *injection,
                             struct pt_regs *regs)
 {
+        ki_debug = injection->debug;
+
         if (injection->target.addr) {
                 unsigned long addr = injection->target.addr;
                 addr += injection->target_offset;

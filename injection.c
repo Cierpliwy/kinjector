@@ -94,6 +94,8 @@ static void ki_print_injection(struct ki_injection *injection)
         if (injection->flags & KI_FLG_CODE) printk(KERN_CONT "CODE |");
         if (injection->flags & KI_FLG_CLEAR) printk(KERN_CONT "CLEAR |");
         printk(KERN_CONT "\n");
+
+        printk(MODULE_PRINTK_DBG "Debug: %d\n", injection->debug);
 }
 
 /*

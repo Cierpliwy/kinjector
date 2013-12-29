@@ -39,6 +39,7 @@ static const char ki_key_skipped_injections[] = "SKIPPED_INJECTIONS";
 static const char ki_key_stack[]              = "STACK";
 static const char ki_key_trigger[]            = "TRIGGER";
 static const char ki_key_trigger_offset[]     = "TRIGGER_OFFSET";
+static const char ki_key_debug[]              = "DEBUG";
 
 /* --- FUNCTIONS ----------------------------------------------------------- */
 /*
@@ -260,6 +261,23 @@ static bool ki_parse_data(const char *buffer, size_t len, size_t *pos,
         }
         
         injection->flags |= KI_FLG_DATA;
+        return true;
+}
+
+/*
+ * Parse DEBUG keyword.
+ * Returns true on success.
+ */
+static bool ki_parse_debug(const char *buffer, size_t len, size_t *pos,
+                           char** msg, struct ki_injection *injection)
+{
+        if (!ki_parse_keyword(buffer, len, pos, 
+                             KEYWORD(ki_key_debug))) {
+                *msg = "DEBUG keyword expected";
+                return false;
+        }
+        
+        injection->debug = 1;
         return true;
 }
 
@@ -554,6 +572,13 @@ bool ki_parse(char *buffer, size_t len, size_t *pos,
                                 return false;
                         break;
                 case 'D':
+                        if (ki_parse_check_char(buffer, len, *pos, 1, 'E')) {
+                                if (!ki_parse_debug(buffer, len, pos, msg,
+                                                    injection))
+                                    return false;
+                                else break;
+                        }
+
                         if (!ki_parse_data(buffer, len, pos, msg, injection))
                                 return false;
                         break;

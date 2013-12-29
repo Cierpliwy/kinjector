@@ -62,6 +62,7 @@ struct ki_injection
         long             max_inj;
         long             skipped_inj;
         long             calls;
+        int              debug;
         enum ki_flags_e  flags;
         struct kprobe    kp;
         struct list_head list;

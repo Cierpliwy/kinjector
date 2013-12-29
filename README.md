@@ -69,6 +69,8 @@ Require TRIGGER.
 example when number is 10, eleventh call will trigger injection. Must be
 decimal positive value. Require TRIGGER.
 
+* `DEBUG` - prevents from actual fault injections.
+
 ## Examples
 
 Command can be passed for example by bash's echo command:
@@ -133,10 +135,11 @@ there is a trigger:
 Every injection is based on bit flipping. Information about bitlip is also
 presented:
 
-    \tBITFLIP 0x%lx:%d\n
+    \tBITFLIP 0x%lx:%d (%pF)\n
 
 1. Address of bit flipped byte
 2. Reverted bit number from 0 to 7
+3. Address of bit flipped byte in kernel pointer format
 
 If you are injecting into registers, randomly selected register is also
 listed:
