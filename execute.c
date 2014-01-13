@@ -28,14 +28,12 @@
     if ((byte) >= offsetof(struct pt_regs, reg) && \
         (byte) < offsetof(struct pt_regs, reg) + reg_size) reg_name = name
 
-/* Runtime debug flag */
-static int ki_debug = 0;
-
 /* --- FUNCTIONS ---------------------------------------------------------- */
 /*
  * Invert specific bit under an address
  */
-static void ki_bitflip(unsigned long addr, unsigned char bit)
+static void ki_bitflip(unsigned long addr, unsigned char bit,
+                       struct ki_injection *injection)
 {
         bool rw;
         char byte;
@@ -52,7 +50,7 @@ static void ki_bitflip(unsigned long addr, unsigned char bit)
         printk(MODULE_PRINTK_ERR "\tBITFLIP 0x%lx:%d (%pF)\n", addr, bit, 
                (void*)addr);
 
-        if (!ki_debug) {
+        if (!injection->debug) {
             byte = *(char*)(addr);
             byte ^= 1 << bit;
             *(char*)(addr) = byte;
@@ -64,32 +62,46 @@ static void ki_bitflip(unsigned long addr, unsigned char bit)
 /*
  * Invert one bit in a sequence of count bytes starting under addr.
  */
-static void ki_bitflip_rand(unsigned long addr, long count)
+static void ki_bitflip_rand(unsigned long addr, long count,
+                            struct ki_injection *injection)
 {
-        unsigned long injection;
-        unsigned char random[sizeof(unsigned long)+1];
+        // We are using less random pseudo-generator
+        unsigned long finaladdr;
+        const int size = sizeof(unsigned long) + 1;
+        unsigned char random[size];
 
-        get_random_bytes_arch(random, sizeof(unsigned long)+1);
-        injection = addr + (*(unsigned long*)random % count);
+        // If available use passed seed
+        if (injection->seed)
+                prandom_seed(injection->seed);
 
-        ki_bitflip(injection, random[sizeof(unsigned long)] % 8);
+        // Get random bytes
+        prandom_bytes(random, size);
+        finaladdr = addr + (*(unsigned long*)random % count);
+
+        ki_bitflip(finaladdr, random[size - 1] % 8, injection);
 }
 
 /*
  * Invert one bit in registers
  */
-static void ki_bitflip_regs(struct pt_regs *regs)
+static void ki_bitflip_regs(struct pt_regs *regs, struct ki_injection *injection)
 {
         /* Select byte and bit to modify */
         unsigned int byte;
-        unsigned char random[sizeof(unsigned int)+1];
+        int size = sizeof(unsigned int) + 1;
+        unsigned char random[size];
         char *reg_name;
         unsigned int reg_size;
 
         reg_name = "?";
         reg_size = sizeof(regs->ax);
 
-        get_random_bytes_arch(random, sizeof(unsigned int)+1);
+        // If available use passed seed
+        if (injection->seed)
+                prandom_seed(injection->seed);
+
+        // Get random bytes
+        prandom_bytes(random, size);
         byte = *((unsigned int*)random) % sizeof(*regs);
 
         /* Get register name */
@@ -119,7 +131,7 @@ static void ki_bitflip_regs(struct pt_regs *regs)
                                   (unsigned long)(regs), byte);
 
         ki_bitflip((unsigned long)(regs) + byte,
-                   random[sizeof(unsigned int)] % 8);
+                   random[size - 1] % 8, injection);
 }
 
 /*
@@ -128,8 +140,6 @@ static void ki_bitflip_regs(struct pt_regs *regs)
 static void ki_do_injection(struct ki_injection *injection,
                             struct pt_regs *regs)
 {
-        ki_debug = injection->debug;
-
         if (injection->target.addr) {
                 unsigned long addr = injection->target.addr;
                 addr += injection->target_offset;
@@ -139,17 +149,17 @@ static void ki_do_injection(struct ki_injection *injection,
                        injection->target.name ? injection->target.name : "?",
                        injection->target_offset);
 
-                ki_bitflip_rand(addr, injection->bitflip);
+                ki_bitflip_rand(addr, injection->bitflip, injection);
         }
 
         if (regs) {
                 if (injection->flags & KI_FLG_REGS) {
-                        ki_bitflip_regs(regs);
+                        ki_bitflip_regs(regs, injection);
                 }
                 if (injection->flags & KI_FLG_STACK) {
                         printk(MODULE_PRINTK_ERR "\tSTACK 0x%lx:10\n",
                                (unsigned long) (regs->sp));
-                        ki_bitflip_rand(regs->sp, 10);
+                        ki_bitflip_rand(regs->sp, 10, injection);
                 }
         }
 
@@ -165,7 +175,7 @@ static void ki_do_injection(struct ki_injection *injection,
 
                         printk(MODULE_PRINTK_ERR "\tDATA 0x%lx:%ld\n", addr, 
                                                                        size);
-                        ki_bitflip_rand(addr, size);
+                        ki_bitflip_rand(addr, size, injection);
                 }
                 if (injection->flags & KI_FLG_RODATA) {
                         unsigned long addr;
@@ -178,7 +188,7 @@ static void ki_do_injection(struct ki_injection *injection,
 
                         printk(MODULE_PRINTK_ERR "\tRODATA 0x%lx:%ld\n", addr
                                                                        , size);
-                        ki_bitflip_rand(addr, size);
+                        ki_bitflip_rand(addr, size, injection);
                 }
                 if (injection->flags & KI_FLG_CODE) {
                         unsigned long addr;
@@ -189,7 +199,7 @@ static void ki_do_injection(struct ki_injection *injection,
 
                         printk(MODULE_PRINTK_ERR "\tCODE 0x%lx:%ld\n", addr
                                                                      , size);
-                        ki_bitflip_rand(addr, size);
+                        ki_bitflip_rand(addr, size, injection);
                 }
         }
 }
@@ -199,16 +209,19 @@ static void ki_do_injection(struct ki_injection *injection,
  */
 static int ki_kp_pre_handler(struct kprobe *p, struct pt_regs *regs)
 {
-        struct ki_injection *injection = container_of(p, struct ki_injection, kp);
+        struct ki_injection *injection = 
+                container_of(p, struct ki_injection, kp);
         
         /* Handle injection limits */
-        if (injection->max_inj && injection->calls >= injection->skipped_inj + injection->max_inj)
+        if (injection->max_inj && 
+            injection->calls >= injection->skipped_inj + injection->max_inj)
                 return 0;
         
         injection->calls++;
 
         /* Handle skipped injections */
-        if (injection->skipped_inj && injection->calls <= injection->skipped_inj)
+        if (injection->skipped_inj && 
+            injection->calls <= injection->skipped_inj)
                 return 0;
 
         /* Execute injection */

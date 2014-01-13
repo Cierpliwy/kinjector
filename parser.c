@@ -40,6 +40,7 @@ static const char ki_key_stack[]              = "STACK";
 static const char ki_key_trigger[]            = "TRIGGER";
 static const char ki_key_trigger_offset[]     = "TRIGGER_OFFSET";
 static const char ki_key_debug[]              = "DEBUG";
+static const char ki_key_seed[]               = "SEED";
 
 /* --- FUNCTIONS ----------------------------------------------------------- */
 /*
@@ -530,6 +531,32 @@ static bool ki_parse_trigger_offset(char *buffer, size_t len, size_t *pos,
 }
 
 /*
+ * Parse SEED keyword
+ * Returns true on success.
+ */
+static bool ki_parse_seed(char *buffer, size_t len, size_t *pos,
+                          char** msg, struct ki_injection *injection)
+{
+        if (!ki_parse_keyword(buffer, len, pos, 
+                              KEYWORD(ki_key_seed))) {
+                *msg = "SEED keyword expected";
+                return false;
+        }
+        
+        if (!ki_parse_skip_space(buffer, pos)) {
+                *msg = "SEED number argument expected";
+                return false;
+        }
+
+        if (!ki_parse_dec(buffer, pos, &injection->seed)) {
+                *msg = "Wrong SEED argument";
+                return false;
+        }
+
+        return true;
+}
+
+/*
  * Check if 'ckpos' character after current position is a 'c' character.
  * Returns true on success.
  */
@@ -621,6 +648,13 @@ bool ki_parse(char *buffer, size_t len, size_t *pos,
                                 if (!ki_parse_skipped_injections(buffer, len, 
                                                                  pos, msg, 
                                                                  injection))
+                                        return false;
+                                else break;
+                        }
+
+                        if (ki_parse_check_char(buffer, len, *pos, 1, 'E')) {
+                                if (!ki_parse_seed(buffer, len, pos, msg, 
+                                                   injection))
                                         return false;
                                 else break;
                         }

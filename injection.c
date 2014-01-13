@@ -96,6 +96,8 @@ static void ki_print_injection(struct ki_injection *injection)
         printk(KERN_CONT "\n");
 
         printk(MODULE_PRINTK_DBG "Debug: %d\n", injection->debug);
+
+        printk(MODULE_PRINTK_DBG "Seed: %lu\n", injection->seed);
 }
 
 /*

@@ -71,6 +71,9 @@ decimal positive value. Require TRIGGER.
 
 * `DEBUG` - prevents from actual fault injections.
 
+* `SEED number` - set additional seed for pseudo-random generator. If set 
+to 0, it'll not be used.
+
 ## Examples
 
 Command can be passed for example by bash's echo command:
